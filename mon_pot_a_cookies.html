@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mon Pot à Cookies</title>
+<style>
+  :root { --cream:#fff8e9; --brown:#603d2b; --tan:#e8c99c; --pink:#f7d7cf; --green:#dce8d1; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,sans-serif; background:var(--cream); color:var(--brown); }
+  header { padding:28px 18px; text-align:center; background:var(--tan); border-bottom:4px solid var(--brown); }
+  header h1 { margin:0; font-size:clamp(1.8rem,6vw,2.6rem); }
+  header p { margin:8px 0 0; }
+  main { max-width:850px; margin:0 auto; padding:18px; }
+  .notice { background:#fff; border:2px solid var(--tan); border-radius:14px; padding:14px; margin-bottom:18px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:12px; }
+  .card { background:white; border:2px solid var(--tan); border-radius:16px; padding:16px; }
+  .card .label { font-size:.9rem; }
+  .card .number { font-size:1.8rem; font-weight:800; margin-top:6px; }
+  section { margin:18px 0; background:white; border:2px solid var(--tan); border-radius:16px; padding:18px; }
+  h2 { margin-top:0; font-size:1.3rem; }
+  label { display:block; font-weight:650; margin:10px 0 5px; }
+  input, select, button { width:100%; padding:12px; font:inherit; border-radius:10px; border:1px solid #bda48a; }
+  button { background:var(--brown); color:white; border:0; font-weight:750; margin-top:12px; cursor:pointer; }
+  button.secondary { background:var(--green); color:var(--brown); }
+  button.danger { background:#f2d3cc; color:#6a2b20; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .pot { border:1px solid var(--tan); border-radius:12px; padding:12px; margin:10px 0; display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; }
+  .pot small { display:block; opacity:.8; margin-top:4px; }
+  .pill { display:inline-block; padding:4px 8px; border-radius:999px; background:var(--green); font-size:.8rem; }
+  .pill.sold { background:var(--pink); }
+  .empty { opacity:.75; font-style:italic; }
+  footer { text-align:center; padding:20px; font-size:.85rem; opacity:.8; }
+  @media(max-width:480px) { .row { grid-template-columns:1fr; } .pot { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>🍪 Mon Pot à Cookies</h1>
+  <p>Des petits pots faits avec amour ❤️</p>
+</header>
+<main>
+  <div class="notice"><strong>Bienvenue !</strong> Cette première version sert à tester ton idée. Les chiffres sont enregistrés uniquement dans ce navigateur sur cet appareil : ils ne sont pas encore partagés avec tes clients.</div>
+
+  <div class="grid">
+    <div class="card"><div class="label">💰 Chiffre d'affaires</div><div class="number" id="revenue">0 €</div></div>
+    <div class="card"><div class="label">🫙 Pots fabriqués</div><div class="number" id="made">0</div></div>
+    <div class="card"><div class="label">🛍️ Pots vendus</div><div class="number" id="sold">0</div></div>
+    <div class="card"><div class="label">📦 Pots disponibles</div><div class="number" id="available">0</div></div>
+  </div>
+
+  <section>
+    <h2>➕ Enregistrer une fabrication</h2>
+    <div class="row">
+      <div><label for="batchDate">Date de fabrication</label><input id="batchDate" type="date"></div>
+      <div><label for="batchCount">Nombre de pots fabriqués</label><input id="batchCount" type="number" min="1" max="200" value="1"></div>
+    </div>
+    <label for="price">Prix de vente par pot (€)</label><input id="price" type="number" min="0" step="0.01" value="8">
+    <button id="makeBtn">Créer les pots et leurs codes</button>
+    <p><small>Chaque pot reçoit un code unique et un délai indicatif de 30 jours pour les pots invendus.</small></p>
+  </section>
+
+  <section>
+    <h2>🔎 Retrouver un pot</h2>
+    <label for="lookup">Code inscrit sur le pot</label>
+    <input id="lookup" placeholder="Ex. COOKIE-ABC123">
+    <button class="secondary" id="lookupBtn">Vérifier le code</button>
+    <div id="lookupResult" aria-live="polite"></div>
+  </section>
+
+  <section>
+    <h2>📋 Mes pots</h2>
+    <label for="filter">Afficher</label>
+    <select id="filter">
+      <option value="all">Tous les pots</option>
+      <option value="available">Disponibles</option>
+      <option value="sold">Vendus</option>
+      <option value="expired">Délai de 30 jours dépassé</option>
+    </select>
+    <div id="pots"></div>
+    <button class="danger" id="resetBtn">Effacer toutes les données de ce navigateur</button>
+  </section>
+</main>
+<footer>Prototype de test • Pas de paiement en ligne • Pas de tirage au sort</footer>
+<script>
+const KEY = 'monPotCookiesPrototypeV1';
+let pots = [];
+try { pots = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { pots = []; }
+const $ = id => document.getElementById(id);
+const today = new Date();
+$('batchDate').value = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+function save(){ localStorage.setItem(KEY, JSON.stringify(pots)); render(); }
+function fmt(n){ return new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n); }
+function deadline(p){ const d = new Date(p.date+'T12:00:00'); d.setDate(d.getDate()+30); return d; }
+function isExpired(p){ return p.status==='available' && new Date() > deadline(p); }
+function daysLeft(p){ return Math.max(0, Math.ceil((deadline(p)-new Date())/86400000)); }
+function render(){
+  const sold = pots.filter(p=>p.status==='sold');
+  $('revenue').textContent = fmt(sold.reduce((s,p)=>s+p.price,0));
+  $('made').textContent = pots.length;
+  $('sold').textContent = sold.length;
+  $('available').textContent = pots.filter(p=>p.status==='available'&&!isExpired(p)).length;
+  const f = $('filter').value;
+  const list = pots.filter(p=> f==='all' || (f==='sold'&&p.status==='sold') || (f==='available'&&p.status==='available'&&!isExpired(p)) || (f==='expired'&&isExpired(p)));
+  $('pots').innerHTML = list.length ? '' : '<p class="empty">Aucun pot dans cette catégorie pour le moment.</p>';
+  list.slice().reverse().forEach(p=>{
+    const expired = isExpired(p);
+    const div = document.createElement('div'); div.className='pot';
+    const info = document.createElement('div');
+    const strong = document.createElement('strong'); strong.textContent=p.code;
+    const small = document.createElement('small'); small.textContent='Fabriqué le '+p.date+' • Prix : '+fmt(p.price)+' • '+(p.status==='sold'?'Vendu':expired?'Délai dépassé':'Disponible — '+daysLeft(p)+' jour(s) restant(s)');
+    info.append(strong,small);
+    const actions = document.createElement('div');
+    const pill = document.createElement('span'); pill.className='pill'+(p.status==='sold'?' sold':''); pill.textContent=p.status==='sold'?'Vendu':expired?'Délai dépassé':'Disponible'; actions.appendChild(pill);
+    if(p.status==='available'){
+      const btn=document.createElement('button'); btn.textContent='Marquer vendu'; btn.onclick=()=>{ if(confirm('Confirmer la vente du pot '+p.code+' ?')){p.status='sold';p.soldDate=new Date().toISOString().slice(0,10);save();} }; actions.appendChild(btn);
+    }
+    div.append(info,actions); $('pots').appendChild(div);
+  });
+}
+$('makeBtn').onclick=()=>{
+  const count=parseInt($('batchCount').value,10), price=parseFloat($('price').value), date=$('batchDate').value;
+  if(!Number.isInteger(count)||count<1||count>200||!Number.isFinite(price)||price<0||!date){alert('Vérifie la date, le nombre de pots et le prix.');return;}
+  for(let i=0;i<count;i++){
+    let code; do { code='COOKIE-'+Math.random().toString(36).slice(2,8).toUpperCase(); } while(pots.some(p=>p.code===code));
+    pots.push({code,date,price,status:'available'});
+  }
+  save(); alert(count+' pot(s) créé(s) ! Note ou imprime les codes pour les mettre sur les pots.');
+};
+$('lookupBtn').onclick=()=>{
+  const code=$('lookup').value.trim().toUpperCase(), p=pots.find(x=>x.code===code);
+  const box=$('lookupResult'); box.textContent='';
+  const para=document.createElement('p');
+  if(!p){para.textContent='Code introuvable sur cet appareil. Vérifie le code ou demande au vendeur.';}
+  else {para.textContent='Code valide : '+p.code+' • '+(p.status==='sold'?'Pot marqué comme vendu.':isExpired(p)?'Délai indicatif de 30 jours dépassé.':'Pot disponible.');}
+  box.appendChild(para);
+};
+$('filter').onchange=render;
+$('resetBtn').onclick=()=>{if(confirm('Effacer définitivement toutes les données enregistrées dans ce navigateur ?')){pots=[];save();}};
+render();
+</script>
+</body>
+</html>
